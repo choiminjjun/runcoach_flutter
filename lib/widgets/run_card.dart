@@ -17,35 +17,22 @@ class RunCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isMockStrava = run.source == 'mock_strava';
-    final isOcr = run.source == 'screenshot_ocr';
+    final isRealtimeGps = run.source == 'realtime_gps';
 
-    Color bgColor = Colors.white;
-    Color borderColor = const Color(0xFFECEEF0);
-    double borderWidth = 1.0;
-    Color shadowColor = const Color(0x0A000000);
-
-    Color badgeBgColor = const Color(0xFFE8F5E9);
-    Color badgeTextColor = const Color(0xFF2E7D32);
-    String badgeText = 'Manual';
-
-    if (isMockStrava) {
-      bgColor = const Color(0xFFFFF5F0);
-      borderColor = const Color(0xFFFFD4C2);
-      borderWidth = 1.5;
-      shadowColor = const Color(0x0FCE3A00);
-      badgeBgColor = const Color(0xFFFFEBE1);
-      badgeTextColor = const Color(0xFFE65100);
-      badgeText = 'Mock Strava';
-    } else if (isOcr) {
-      bgColor = const Color(0xFFF0F5FF);
-      borderColor = const Color(0xFFC2D9FF);
-      borderWidth = 1.5;
-      shadowColor = const Color(0x0F0056B3);
-      badgeBgColor = const Color(0xFFDEEBFF);
-      badgeTextColor = const Color(0xFF0056B3);
-      badgeText = 'Screenshot OCR';
-    }
+    final bgColor = isRealtimeGps ? const Color(0xFFEFFFF6) : Colors.white;
+    final borderColor = isRealtimeGps
+        ? const Color(0xFF05E676)
+        : const Color(0xFFECEEF0);
+    final shadowColor = isRealtimeGps
+        ? const Color(0x14058A45)
+        : const Color(0x0A000000);
+    final badgeBgColor = isRealtimeGps
+        ? const Color(0xFFDDFBEA)
+        : const Color(0xFFE8F5E9);
+    final badgeTextColor = isRealtimeGps
+        ? const Color(0xFF008A45)
+        : const Color(0xFF2E7D32);
+    final badgeText = isRealtimeGps ? 'GPS' : 'Manual';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -53,10 +40,7 @@ class RunCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: borderColor,
-          width: borderWidth,
-        ),
+        border: Border.all(color: borderColor, width: isRealtimeGps ? 1.5 : 1),
         boxShadow: [
           BoxShadow(
             color: shadowColor,
@@ -87,7 +71,10 @@ class RunCard extends StatelessWidget {
                         ),
                         const SizedBox(width: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
                             color: badgeBgColor,
                             borderRadius: BorderRadius.circular(4),
@@ -153,13 +140,29 @@ class RunCard extends StatelessWidget {
               runSpacing: 8,
               children: [
                 if (run.calories != null)
-                  _MetricLabel(icon: Icons.local_fire_department, label: '칼로리', value: '${run.calories} kcal'),
+                  _MetricLabel(
+                    icon: Icons.local_fire_department,
+                    label: '칼로리',
+                    value: '${run.calories} kcal',
+                  ),
                 if (run.elevationGainM != null)
-                  _MetricLabel(icon: Icons.filter_hdr, label: '고도 상승', value: '${run.elevationGainM!.toStringAsFixed(1)} m'),
+                  _MetricLabel(
+                    icon: Icons.filter_hdr,
+                    label: '고도 상승',
+                    value: '${run.elevationGainM!.toStringAsFixed(1)} m',
+                  ),
                 if (run.averageHeartRate != null)
-                  _MetricLabel(icon: Icons.favorite, label: '심박수', value: '${run.averageHeartRate} bpm'),
+                  _MetricLabel(
+                    icon: Icons.favorite,
+                    label: '심박수',
+                    value: '${run.averageHeartRate} bpm',
+                  ),
                 if (run.cadence != null)
-                  _MetricLabel(icon: Icons.directions_walk, label: '케이던스', value: '${run.cadence} spm'),
+                  _MetricLabel(
+                    icon: Icons.directions_walk,
+                    label: '케이던스',
+                    value: '${run.cadence} spm',
+                  ),
               ],
             ),
           ],

@@ -1,10 +1,8 @@
-// run_activity.dart: 수동 입력 기록, Mock Strava 가져오기 기록, OCR 인식 기록을 하나로 다루는 모델입니다.
-import '../utils/pace_utils.dart';
+// run_activity.dart: 수동 입력 기록과 실시간 GPS 기록을 하나로 다루는 모델입니다.
 
 class RunActivity {
   const RunActivity({
     required this.id,
-    required this.stravaActivityId,
     required this.source,
     required this.date,
     required this.distanceKm,
@@ -20,8 +18,7 @@ class RunActivity {
   });
 
   final String id;
-  final String? stravaActivityId;
-  final String source; // 'manual', 'mock_strava', 'screenshot_ocr'
+  final String source; // 'manual', 'realtime_gps'
   final DateTime date;
   final double distanceKm;
   final int durationSeconds;
@@ -36,9 +33,6 @@ class RunActivity {
   final int? averageHeartRate;
   final int? cadence;
 
-  bool get isStrava => source == 'mock_strava';
-  bool get isOcr => source == 'screenshot_ocr';
-
   String get dateText {
     return '${date.year.toString().padLeft(4, '0')}-'
         '${date.month.toString().padLeft(2, '0')}-'
@@ -48,7 +42,6 @@ class RunActivity {
   factory RunActivity.fromJson(Map<String, dynamic> json) {
     return RunActivity(
       id: json['id'] as String,
-      stravaActivityId: json['stravaActivityId'] as String?,
       source: json['source'] as String? ?? 'manual',
       date: DateTime.parse(json['date'] as String),
       distanceKm: (json['distanceKm'] as num).toDouble(),
@@ -67,7 +60,6 @@ class RunActivity {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
-      'stravaActivityId': stravaActivityId,
       'source': source,
       'date': date.toIso8601String(),
       'distanceKm': distanceKm,
@@ -83,65 +75,8 @@ class RunActivity {
     };
   }
 
-  factory RunActivity.fromMockStravaJson(Map<String, dynamic> json) {
-    final stravaId = json['id']?.toString() ?? '';
-    final meters = (json['distance'] as num? ?? 0).toDouble();
-    final distanceKm = meters / 1000.0;
-    final durationSeconds = json['moving_time'] as int? ?? json['elapsed_time'] as int? ?? 0;
-    final dateStr = json['start_date_local'] as String? ?? json['start_date'] as String? ?? DateTime.now().toIso8601String();
-    
-    return RunActivity(
-      id: 'strava-$stravaId',
-      stravaActivityId: stravaId,
-      source: 'mock_strava',
-      date: DateTime.parse(dateStr),
-      distanceKm: distanceKm,
-      durationSeconds: durationSeconds,
-      paceSecondsPerKm: calculatePaceSeconds(distanceKm, durationSeconds),
-      condition: 'Strava',
-      note: json['name'] as String? ?? 'Strava Run',
-      createdAt: DateTime.now(),
-      calories: json['calories'] as int?,
-      elevationGainM: (json['total_elevation_gain'] as num?)?.toDouble(),
-      averageHeartRate: json['average_heartrate'] as int?,
-      cadence: json['average_cadence'] as int?,
-    );
-  }
-
-  factory RunActivity.fromOcrParsedData(Map<String, dynamic> data) {
-    final distanceKm = (data['distanceKm'] as num? ?? 0).toDouble();
-    final durationSeconds = data['durationSeconds'] as int? ?? 0;
-    
-    DateTime parsedDate;
-    if (data['date'] is DateTime) {
-      parsedDate = data['date'] as DateTime;
-    } else if (data['date'] is String) {
-      parsedDate = DateTime.tryParse(data['date'] as String) ?? DateTime.now();
-    } else {
-      parsedDate = DateTime.now();
-    }
-
-    return RunActivity(
-      id: 'ocr-${DateTime.now().microsecondsSinceEpoch}',
-      stravaActivityId: null,
-      source: 'screenshot_ocr',
-      date: parsedDate,
-      distanceKm: distanceKm,
-      durationSeconds: durationSeconds,
-      paceSecondsPerKm: data['paceSecondsPerKm'] as int? ?? calculatePaceSeconds(distanceKm, durationSeconds),
-      condition: data['condition']?.toString() ?? '보통',
-      note: data['note']?.toString() ?? 'Screenshot OCR Run',
-      createdAt: DateTime.now(),
-      calories: data['calories'] as int?,
-      elevationGainM: (data['elevationGainM'] as num?)?.toDouble(),
-      averageHeartRate: data['averageHeartRate'] as int?,
-      cadence: data['cadence'] as int?,
-    );
-  }
-
   RunActivity copyWith({
     String? id,
-    String? stravaActivityId,
     String? source,
     DateTime? date,
     double? distanceKm,
@@ -157,7 +92,6 @@ class RunActivity {
   }) {
     return RunActivity(
       id: id ?? this.id,
-      stravaActivityId: stravaActivityId ?? this.stravaActivityId,
       source: source ?? this.source,
       date: date ?? this.date,
       distanceKm: distanceKm ?? this.distanceKm,

@@ -13,8 +13,6 @@ class RunAnalysisResult {
     required this.fastestRun,
     required this.streak,
     required this.manualCount,
-    required this.mockStravaCount,
-    required this.ocrCount,
     required this.totalCalories,
     required this.totalElevationGain,
     required this.averageHeartRate,
@@ -31,14 +29,12 @@ class RunAnalysisResult {
   final RunActivity? fastestRun;
   final int streak;
   final int manualCount;
-  final int mockStravaCount;
-  final int ocrCount;
 
   // 확장 건강 지표
   final int totalCalories;
   final double totalElevationGain;
   final int averageHeartRate; // null 제외 평균
-  final int averageCadence;   // null 제외 평균
+  final int averageCadence; // null 제외 평균
 
   final String comment;
 }
@@ -58,8 +54,10 @@ DateTime _startOfWeek(DateTime date) {
 double getWeekDistance(List<RunActivity> runs, [DateTime? now]) {
   final today = now ?? DateTime.now();
   final weekStart = _startOfWeek(today);
-  final weekEnd = today.add(const Duration(days: 1)); // Include today up to midnight
-  
+  final weekEnd = today.add(
+    const Duration(days: 1),
+  ); // Include today up to midnight
+
   return runs.fold(0.0, (sum, run) {
     final runDate = run.date;
     final normalized = DateTime(runDate.year, runDate.month, runDate.day);
@@ -72,7 +70,7 @@ double getWeekDistance(List<RunActivity> runs, [DateTime? now]) {
 
 int getCurrentStreak(List<RunActivity> runs, [DateTime? now]) {
   if (runs.isEmpty) return 0;
-  
+
   final runDates = runs.map((run) => _dateText(run.date)).toSet();
   var cursor = now ?? DateTime.now();
   cursor = DateTime(cursor.year, cursor.month, cursor.day);
@@ -99,23 +97,27 @@ int getCurrentStreak(List<RunActivity> runs, [DateTime? now]) {
 
 RunAnalysisResult buildAnalysis(List<RunActivity> runs) {
   final totalRuns = runs.length;
-  final totalDistance = runs.fold<double>(0.0, (sum, run) => sum + run.distanceKm);
-  final totalDuration = runs.fold<int>(0, (sum, run) => sum + run.durationSeconds);
+  final totalDistance = runs.fold<double>(
+    0.0,
+    (sum, run) => sum + run.distanceKm,
+  );
+  final totalDuration = runs.fold<int>(
+    0,
+    (sum, run) => sum + run.durationSeconds,
+  );
   final averagePace = calculatePaceSeconds(totalDistance, totalDuration);
   final weekDistance = getWeekDistance(runs);
   final streak = getCurrentStreak(runs);
 
   final manualCount = runs.where((r) => r.source == 'manual').length;
-  final mockStravaCount = runs.where((r) => r.source == 'mock_strava').length;
-  final ocrCount = runs.where((r) => r.source == 'screenshot_ocr').length;
 
   // 확장 건강 지표 누계 및 평균 계산 (null 제외)
   var totalCalories = 0;
   var totalElevationGain = 0.0;
-  
+
   var heartRateSum = 0;
   var heartRateCount = 0;
-  
+
   var cadenceSum = 0;
   var cadenceCount = 0;
 
@@ -127,7 +129,8 @@ RunAnalysisResult buildAnalysis(List<RunActivity> runs) {
       longestRun = run;
     }
     if (run.paceSecondsPerKm > 0 &&
-        (fastestRun == null || run.paceSecondsPerKm < fastestRun.paceSecondsPerKm)) {
+        (fastestRun == null ||
+            run.paceSecondsPerKm < fastestRun.paceSecondsPerKm)) {
       fastestRun = run;
     }
 
@@ -147,8 +150,12 @@ RunAnalysisResult buildAnalysis(List<RunActivity> runs) {
     }
   }
 
-  final averageHeartRate = heartRateCount > 0 ? (heartRateSum / heartRateCount).round() : 0;
-  final averageCadence = cadenceCount > 0 ? (cadenceSum / cadenceCount).round() : 0;
+  final averageHeartRate = heartRateCount > 0
+      ? (heartRateSum / heartRateCount).round()
+      : 0;
+  final averageCadence = cadenceCount > 0
+      ? (cadenceSum / cadenceCount).round()
+      : 0;
 
   return RunAnalysisResult(
     totalRuns: totalRuns,
@@ -160,13 +167,17 @@ RunAnalysisResult buildAnalysis(List<RunActivity> runs) {
     fastestRun: fastestRun,
     streak: streak,
     manualCount: manualCount,
-    mockStravaCount: mockStravaCount,
-    ocrCount: ocrCount,
     totalCalories: totalCalories,
     totalElevationGain: totalElevationGain,
     averageHeartRate: averageHeartRate,
     averageCadence: averageCadence,
-    comment: _analysisComment(totalRuns, weekDistance, averagePace, streak, averageHeartRate),
+    comment: _analysisComment(
+      totalRuns,
+      weekDistance,
+      averagePace,
+      streak,
+      averageHeartRate,
+    ),
   );
 }
 

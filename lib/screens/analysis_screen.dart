@@ -121,16 +121,6 @@ class AnalysisScreen extends StatelessWidget {
                 accent: const Color(0xFF0A84FF),
               ),
               StatCard(
-                label: 'Mock Strava 기록 수',
-                value: '${analysis.mockStravaCount}회',
-                accent: const Color(0xFFFC5200),
-              ),
-              StatCard(
-                label: 'Screenshot OCR 수',
-                value: '${analysis.ocrCount}회',
-                accent: const Color(0xFF00C7BE),
-              ),
-              StatCard(
                 label: '총 칼로리 소모',
                 value: '${analysis.totalCalories} kcal',
                 accent: const Color(0xFFFF9500),
@@ -142,12 +132,16 @@ class AnalysisScreen extends StatelessWidget {
               ),
               StatCard(
                 label: '평균 심박수',
-                value: analysis.averageHeartRate > 0 ? '${analysis.averageHeartRate} bpm' : '- bpm',
+                value: analysis.averageHeartRate > 0
+                    ? '${analysis.averageHeartRate} bpm'
+                    : '- bpm',
                 accent: const Color(0xFFFF2D55),
               ),
               StatCard(
                 label: '평균 케이던스',
-                value: analysis.averageCadence > 0 ? '${analysis.averageCadence} spm' : '- spm',
+                value: analysis.averageCadence > 0
+                    ? '${analysis.averageCadence} spm'
+                    : '- spm',
                 accent: const Color(0xFF5856D6),
               ),
             ];

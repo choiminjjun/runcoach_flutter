@@ -66,11 +66,6 @@ class HomeScreen extends StatelessWidget {
               value: '${analysis.manualCount}회',
               accent: const Color(0xFF0A84FF),
             ),
-            StatCard(
-              label: 'Mock Strava 기록 수',
-              value: '${analysis.mockStravaCount}회',
-              accent: const Color(0xFFFC5200),
-            ),
           ],
         ),
         const SizedBox(height: 26),
@@ -82,7 +77,7 @@ class HomeScreen extends StatelessWidget {
         if (latestRun == null)
           const _EmptyCard(
             title: '아직 러닝 기록이 없습니다.',
-            text: '활동 탭에서 첫 러닝을 입력하거나 Strava에서 가져와 보세요.',
+            text: '활동 탭에서 첫 러닝을 직접 입력하거나 실시간 러닝을 시작해 보세요.',
           )
         else
           RunCard(run: latestRun, compact: true),

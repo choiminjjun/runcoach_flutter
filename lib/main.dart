@@ -3,13 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'models/run_activity.dart';
-import 'models/import_result.dart';
 import 'screens/activity_screen.dart';
 import 'screens/analysis_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/record_screen.dart';
 import 'services/run_storage_service.dart';
-import 'services/mock_strava_service.dart';
 
 void main() {
   runApp(const RunCoachApp());
@@ -46,7 +44,6 @@ class RunCoachHome extends StatefulWidget {
 
 class _RunCoachHomeState extends State<RunCoachHome> {
   final _storage = RunStorageService();
-  final _stravaService = MockStravaService();
   var _selectedIndex = 0;
   List<RunActivity> _runs = [];
 
@@ -74,38 +71,6 @@ class _RunCoachHomeState extends State<RunCoachHome> {
     setState(() => _runs = runs);
   }
 
-  Future<ImportResult> _importMockStrava() async {
-    final mockRuns = await _stravaService.fetchMockRuns();
-    final currentRuns = await _storage.getRuns();
-
-    var added = 0;
-    var duplicate = 0;
-    final List<RunActivity> toAdd = [];
-
-    for (final mockRun in mockRuns) {
-      final isDuplicate = currentRuns.any((existing) =>
-          existing.stravaActivityId != null &&
-          existing.stravaActivityId == mockRun.stravaActivityId);
-
-      if (isDuplicate) {
-        duplicate++;
-      } else {
-        toAdd.add(mockRun);
-        added++;
-      }
-    }
-
-    if (toAdd.isNotEmpty) {
-      final updatedRuns = [...toAdd, ...currentRuns];
-      await _storage.saveRuns(updatedRuns);
-      if (mounted) {
-        setState(() => _runs = updatedRuns);
-      }
-    }
-
-    return ImportResult(addedCount: added, duplicateCount: duplicate);
-  }
-
   void _goBack() {
     if (_selectedIndex == 0) {
       SystemNavigator.pop();
@@ -118,12 +83,7 @@ class _RunCoachHomeState extends State<RunCoachHome> {
   Widget build(BuildContext context) {
     final screens = [
       HomeScreen(runs: _runs, onBack: _goBack),
-      ActivityScreen(
-        onSave: _saveRun,
-        onImportMockStrava: _importMockStrava,
-        runs: _runs,
-        onBack: _goBack,
-      ),
+      ActivityScreen(onSave: _saveRun, runs: _runs, onBack: _goBack),
       RecordScreen(runs: _runs, onDelete: _deleteRun, onBack: _goBack),
       AnalysisScreen(runs: _runs, onBack: _goBack),
     ];

@@ -1,25 +1,23 @@
-// activity_screen.dart: 사용자가 러닝 기록을 입력하거나 Mock Strava/Screenshot OCR에서 데이터를 가져오는 화면입니다.
+// activity_screen.dart: 사용자가 러닝 기록을 직접 입력하거나 실시간 GPS 기록을 시작하는 화면입니다.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/run_activity.dart';
-import '../models/import_result.dart';
-import '../services/screenshot_ocr_service.dart';
+import '../services/realtime_run_service.dart';
 import '../utils/pace_utils.dart';
+import '../utils/recommendation.dart';
 import '../widgets/page_header.dart';
-import '../widgets/mock_strava_card.dart';
-import '../widgets/screenshot_ocr_card.dart';
 
 class ActivityScreen extends StatefulWidget {
   const ActivityScreen({
     super.key,
     required this.onSave,
-    required this.onImportMockStrava,
     required this.runs,
     required this.onBack,
   });
 
   final Future<void> Function(RunActivity run) onSave;
-  final Future<ImportResult> Function() onImportMockStrava;
   final List<RunActivity> runs;
   final VoidCallback onBack;
 
@@ -41,14 +39,40 @@ class _ActivityScreenState extends State<ActivityScreen> {
   final _cadenceController = TextEditingController();
 
   String _condition = '보통';
-  bool _isLoadingStrava = false;
-  bool _isLoadingOcr = false;
+  bool _isRealtimeBusy = false;
   String _activeSource = 'manual';
 
-  final _ocrService = ScreenshotOcrService();
+  final _realtimeRunService = RealtimeRunService();
+  StreamSubscription<RealtimeRunSnapshot>? _realtimeSubscription;
+  RealtimeRunSnapshot _realtimeSnapshot = const RealtimeRunSnapshot(
+    isRunning: false,
+    startedAt: null,
+    distanceKm: 0,
+    elapsedSeconds: 0,
+    paceSecondsPerKm: 0,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _realtimeSubscription = _realtimeRunService.snapshots.listen(
+      (snapshot) {
+        if (mounted) {
+          setState(() => _realtimeSnapshot = snapshot);
+        }
+      },
+      onError: (Object error) {
+        if (mounted) {
+          _showMessage('실시간 러닝 추적 중 오류가 발생했습니다.');
+        }
+      },
+    );
+  }
 
   @override
   void dispose() {
+    unawaited(_realtimeSubscription?.cancel());
+    unawaited(_realtimeRunService.dispose());
     _dateController.dispose();
     _distanceController.dispose();
     _minutesController.dispose();
@@ -95,7 +119,6 @@ class _ActivityScreenState extends State<ActivityScreen> {
     final pace = calculatePaceSeconds(distance, durationSeconds);
     final run = RunActivity(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
-      stravaActivityId: null,
       source: _activeSource,
       date: runDate,
       distanceKm: distance,
@@ -130,100 +153,58 @@ class _ActivityScreenState extends State<ActivityScreen> {
     });
   }
 
-  Future<void> _importStrava() async {
-    setState(() => _isLoadingStrava = true);
-    try {
-      // 인공 딜레이로 실제 통신하는 느낌 제공
-      await Future.delayed(const Duration(milliseconds: 800));
-      final result = await widget.onImportMockStrava();
-      if (!mounted) return;
-      _showMessage(
-        'Mock Strava 가져오기 성공: 신규 ${result.addedCount}건 추가, 중복 ${result.duplicateCount}건 제외.',
-      );
-    } catch (e) {
-      if (!mounted) return;
-      _showMessage('Mock Strava 데이터 가져오기 중 오류가 발생했습니다.');
-    } finally {
-      if (mounted) {
-        setState(() => _isLoadingStrava = false);
-      }
+  Future<void> _toggleRealtimeRun() async {
+    if (_isRealtimeBusy) {
+      return;
     }
-  }
 
-  Future<void> _importOcr() async {
-    setState(() => _isLoadingOcr = true);
+    setState(() => _isRealtimeBusy = true);
     try {
-      final data = await _ocrService.performOcr();
-      if (!mounted) return;
+      if (_realtimeSnapshot.isRunning) {
+        final snapshot = await _realtimeRunService.stop();
+        if (!mounted) return;
 
-      if (data != null) {
-        // OCR 성공 시 입력 폼에 먼저 채워둠 (자동 저장 하지 않음)
-        final DateTime dateVal = data['date'] is DateTime
-            ? data['date']
-            : DateTime.now();
-        _dateController.text =
-            '${dateVal.year.toString().padLeft(4, '0')}-'
-            '${dateVal.month.toString().padLeft(2, '0')}-'
-            '${dateVal.day.toString().padLeft(2, '0')}';
-
-        //_distanceController.text = (data['distanceKm'] as double).toStringAsFixed(2);
-        final rawDistance = data['distanceKm'];
-        if (rawDistance != null) {
-          // 어떤 타입이 들어와도 문자열로 만든 후 double로 안전하게 파싱합니다.
-          final parsedDistance = double.tryParse(rawDistance.toString()) ?? 0.0;
-          _distanceController.text = parsedDistance.toStringAsFixed(
-            2,
-          ); // 소수점 2자리(6.59) 유지
-        } else {
-          _distanceController.clear();
-        }
-        final durationSeconds = data['durationSeconds'] as int;
-        final mins = durationSeconds ~/ 60;
-        final secs = durationSeconds % 60;
-        _minutesController.text = mins.toString();
-        _secondsController.text = secs.toString();
-
-        _noteController.text = data['note'] ?? '';
-
-        if (data['calories'] != null) {
-          _caloriesController.text = data['calories'].toString();
-        } else {
-          _caloriesController.clear();
+        if (snapshot.distanceKm < 0.05 || snapshot.elapsedSeconds < 10) {
+          _showMessage('러닝 시간이 너무 짧아 저장하지 않았습니다.');
+          return;
         }
 
-        if (data['elevationGainM'] != null) {
-          _elevationController.text = data['elevationGainM'].toString();
-        } else {
-          _elevationController.clear();
-        }
+        final run = RunActivity(
+          id: DateTime.now().microsecondsSinceEpoch.toString(),
+          source: 'realtime_gps',
+          date: snapshot.startedAt ?? DateTime.now(),
+          distanceKm: snapshot.distanceKm,
+          durationSeconds: snapshot.elapsedSeconds,
+          paceSecondsPerKm: snapshot.paceSecondsPerKm,
+          condition: 'GPS',
+          note: '실시간 러닝 기록',
+          createdAt: DateTime.now(),
+        );
 
-        if (data['averageHeartRate'] != null) {
-          _heartRateController.text = data['averageHeartRate'].toString();
-        } else {
-          _heartRateController.clear();
-        }
-
-        if (data['cadence'] != null) {
-          _cadenceController.text = data['cadence'].toString();
-        } else {
-          _cadenceController.clear();
-        }
-
-        setState(() {
-          _condition = '보통';
-          _activeSource = 'screenshot_ocr';
-        });
-
-        _showMessage('OCR 데이터 파싱 완료: 수동 입력 폼에 채워졌습니다. 내용을 확인한 뒤 저장해 주세요.');
+        await widget.onSave(run);
+        if (!mounted) return;
+        _showMessage(
+          '실시간 러닝 저장 완료: 평균 페이스는 ${formatPace(run.paceSecondsPerKm)}입니다.',
+        );
       } else {
-        _showMessage('이미지를 선택하지 않았거나 OCR 분석에 실패했습니다.');
+        final recommendation = getRecommendation(widget.runs);
+        await _realtimeRunService.start(targetPaceSeconds: recommendation.targetPaceSeconds);
+        if (!mounted) return;
+        _showMessage(
+          '실시간 러닝을 시작했습니다. 오늘의 목표 페이스는 ${formatPace(recommendation.targetPaceSeconds)}입니다.',
+        );
+      }
+    } on RealtimeRunException catch (e) {
+      if (mounted) {
+        _showMessage(e.message);
       }
     } catch (e) {
-      if (!mounted) return;
-      _showMessage('OCR 연동 중 에러가 발생했습니다.');
+      if (mounted) {
+        _showMessage('실시간 러닝을 시작할 수 없습니다. 위치/알림 권한을 확인해 주세요.');
+      }
     } finally {
       if (mounted) {
-        setState(() => _isLoadingOcr = false);
+        setState(() => _isRealtimeBusy = false);
       }
     }
   }
@@ -236,29 +217,22 @@ class _ActivityScreenState extends State<ActivityScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final stravaCount = widget.runs
-        .where((r) => r.source == 'mock_strava')
-        .length;
-
     return ListView(
       padding: const EdgeInsets.fromLTRB(22, 64, 22, 28),
       children: [
         PageHeader(
           title: '활동',
-          description:
-              '수동으로 오늘의 러닝을 기록하거나 Mock Strava, Screenshot OCR 연동을 시도하세요.',
+          description: '실시간 페이스를 확인하거나 오늘의 러닝을 직접 기록하세요.',
           icon: Icons.add_circle_outline,
           onBack: widget.onBack,
         ),
         const SizedBox(height: 24),
-        MockStravaCard(
-          onImport: _importStrava,
-          importedCount: stravaCount,
-          isLoading: _isLoadingStrava,
+        _RealtimeRunCard(
+          snapshot: _realtimeSnapshot,
+          isBusy: _isRealtimeBusy,
+          onToggle: _toggleRealtimeRun,
         ),
         const SizedBox(height: 16),
-        ScreenshotOcrCard(onPickAndParse: _importOcr, isLoading: _isLoadingOcr),
-        const SizedBox(height: 24),
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
@@ -269,14 +243,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                _activeSource == 'screenshot_ocr'
-                    ? '러닝 기록 추가 (OCR 연동 확인)'
-                    : '러닝 기록 추가 (수동)',
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                ),
+              const Text(
+                '러닝 기록 추가 (수동)',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
               ),
               const SizedBox(height: 18),
               _LabeledField(
@@ -416,11 +385,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                 child: FilledButton.icon(
                   onPressed: _save,
                   icon: const Icon(Icons.save_outlined),
-                  label: Text(
-                    _activeSource == 'screenshot_ocr'
-                        ? '러닝 기록 확인 후 저장'
-                        : '러닝 기록 저장',
-                  ),
+                  label: const Text('러닝 기록 저장'),
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFF0A84FF),
                     foregroundColor: Colors.white,
@@ -509,6 +474,144 @@ class _FieldLabel extends StatelessWidget {
           fontWeight: FontWeight.w800,
         ),
       ),
+    );
+  }
+}
+
+class _RealtimeRunCard extends StatelessWidget {
+  const _RealtimeRunCard({
+    required this.snapshot,
+    required this.isBusy,
+    required this.onToggle,
+  });
+
+  final RealtimeRunSnapshot snapshot;
+  final bool isBusy;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final isRunning = snapshot.isRunning;
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: isRunning ? const Color(0xFFEFFFF6) : const Color(0xFFF6F8FA),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isRunning ? const Color(0xFF05E676) : const Color(0xFFEEF0F2),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isRunning ? Icons.sensors : Icons.location_searching,
+                color: isRunning
+                    ? const Color(0xFF008A45)
+                    : const Color(0xFF555555),
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  '실시간 페이스 알림',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _RealtimeMetric(
+                  label: '거리',
+                  value: '${snapshot.distanceKm.toStringAsFixed(2)} km',
+                ),
+              ),
+              Expanded(
+                child: _RealtimeMetric(
+                  label: '시간',
+                  value: formatDuration(snapshot.elapsedSeconds),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _RealtimeMetric(
+            label: '현재 평균 페이스',
+            value: formatPace(snapshot.paceSecondsPerKm),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: FilledButton.icon(
+              onPressed: isBusy ? null : onToggle,
+              icon: isBusy
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(
+                      isRunning ? Icons.stop_circle_outlined : Icons.play_arrow,
+                    ),
+              label: Text(isRunning ? '러닝 중지 후 저장' : '실시간 러닝 시작'),
+              style: FilledButton.styleFrom(
+                backgroundColor: isRunning
+                    ? const Color(0xFFFF3B30)
+                    : const Color(0xFF05E676),
+                foregroundColor: isRunning ? Colors.white : Colors.black,
+                disabledBackgroundColor: const Color(0xFFD8DDE2),
+                disabledForegroundColor: const Color(0xFF777777),
+                textStyle: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RealtimeMetric extends StatelessWidget {
+  const _RealtimeMetric({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: Color(0xFF666666),
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Color(0xFF111111),
+            fontSize: 22,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ],
     );
   }
 }
